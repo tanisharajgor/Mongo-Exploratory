@@ -1,0 +1,347 @@
+1. How many restaurants are in a certain borough? (Ex: Brooklyn, Staten Island, Queens)
+
+What can be parameterized: borough
+
+Query:
+db.restaurants.find({borough: "Brooklyn"}).count()
+
+Output:
+12172
+
+2. What are the zip codes with the most restaurants?
+
+What can be parameterized: limit
+
+Query:
+db.restaurants.aggregate([
+    {$group: {_id: "$address.zipcode", restaurant_count: {$sum: 1}}},
+    {$sort: {restaurant_count: -1}},
+    {$limit: 10}
+])
+
+Output: 
+[
+  { _id: '10003', restaurant_count: 1372 },
+  { _id: '10019', restaurant_count: 1350 },
+  { _id: '10036', restaurant_count: 1222 },
+  { _id: '10001', restaurant_count: 1040 },
+  { _id: '10022', restaurant_count: 970 },
+  { _id: '10013', restaurant_count: 960 },
+  { _id: '10002', restaurant_count: 942 },
+  { _id: '10011', restaurant_count: 934 },
+  { _id: '10016', restaurant_count: 866 },
+  { _id: '10014', restaurant_count: 856 }
+]
+
+3. For a given cuisine, how many restaurants have a certain grade?
+
+What can be parameterized: grade, cuisine
+
+Query:
+db.restaurants.aggregate([
+    {"$unwind": "$grades"},
+    {"$match": {"cuisine": "American", "grades.grade": "Z"}},
+    {"$group": {"_id": "Z", "count": {"$sum": 1}}}
+])
+
+Output:
+[ { _id: 'Z', count: 524 } ]
+
+4. What score ranges correspond to each grade?
+
+What can be parameterized: grade
+
+Query:
+db.restaurants.aggregate([
+    {"$match": {"grades.grade": "A"}},
+    {"$unwind": "$grades"},
+    {"$match": {"grades.grade": "A"}},
+    {"$group": {"_id": "A", "min_score": {"$min": "$grades.score"}, "max_score": {"$max": "$grades.score"}}}
+])
+
+Output:
+[ { _id: 'A', min_score: 0, max_score: 27 } ]
+
+5. What is the most popular cuisine for each borough?
+
+Query: 
+db.restaurants.aggregate([
+    {"$match": {"grades": {"$exists": true, "$ne": []}}},
+    {"$unwind": "$grades" },
+    {"$group": {"_id": "$borough", "avg_score": {"$avg": "$grades.score"}}}
+])
+
+Output:
+[
+  { _id: 'Missing', avg_score: 9.632911392405063 },
+  { _id: 'Manhattan', avg_score: 11.418151216986018 },
+  { _id: 'Bronx', avg_score: 11.036186099942562 },
+  { _id: 'Staten Island', avg_score: 11.370957711442786 },
+  { _id: 'Brooklyn', avg_score: 11.44797595737899 },
+  { _id: 'Queens', avg_score: 11.634865110930088 }
+]
+
+6. What are the most popular cuisines overall (by restaurant count)?
+
+What can be parameterized: limit
+
+Query:
+db.restaurants.aggregate([
+    {"$group": {"_id": "$cuisine", "count": {"$sum": 1}}},
+    {"$sort": {"count": -1}},
+    {"$limit": 10}
+])
+
+Output:
+[
+  { _id: 'American', count: 6183 },
+  { _id: 'Chinese', count: 2418 },
+  { _id: 'Café/Coffee/Tea', count: 1214 },
+  { _id: 'Pizza', count: 1163 },
+  { _id: 'Italian', count: 1069 },
+  { _id: 'Other', count: 1011 },
+  { _id: 'Latin (Cuban, Dominican, Puerto Rican, South & Central American)', count: 850 },
+  { _id: 'Japanese', count: 760 },
+  { _id: 'Mexican', count: 754 },
+  { _id: 'Bakery', count: 691 }
+]
+
+7. What are the top cuisines for each borough?
+
+What can be parameterized: borough, limit
+
+Query:
+db.restaurants.aggregate([
+    {"$match": {"borough": "Queens"}},
+    {"$group": {"_id": "$cuisine", "count": {"$sum": 1}}},
+    {"$sort": {"count": -1}},
+    {"$limit": 10}
+])
+
+Output:
+[
+  { _id: 'American', count: 1040 },
+  { _id: 'Chinese', count: 728 },
+  { _id: 'Latin (Cuban, Dominican, Puerto Rican, South & Central American)', count: 300 },
+  { _id: 'Pizza', count: 277 },
+  { _id: 'Other', count: 236 },
+  { _id: 'Spanish', count: 219 },
+  { _id: 'Bakery', count: 204 },
+  { _id: 'Caribbean', count: 193 },
+  { _id: 'Café/Coffee/Tea', count: 177 },
+  { _id: 'Korean', count: 167 }
+]
+
+8. What are the average health inspections scores for each borough?
+
+Query:
+db.restaurants.aggregate([
+    {"$match": {"grades": {"$exists": true, "$ne": []}}},
+    {"$unwind": "$grades"},
+    {"$group": {"_id": "$borough", "avg_score": {"$avg": "$grades.score"}}}
+])
+
+Output:
+[
+  { _id: 'Missing', avg_score: 9.632911392405063 },
+  { _id: 'Manhattan', avg_score: 11.418151216986018 },
+  { _id: 'Bronx', avg_score: 11.036186099942562 },
+  { _id: 'Staten Island', avg_score: 11.370957711442786 },
+  { _id: 'Brooklyn', avg_score: 11.44797595737899 },
+  { _id: 'Queens', avg_score: 11.634865110930088 }
+]
+
+9. What restaurants are close to a given coordinate in a certain proximity?
+
+What can be parameterized: coordinate, max_distance
+
+Query:
+db.restaurants.createIndex({"address.coord": "2dsphere"})
+db.restaurants.find({
+    "address.coord": {
+        "$nearSphere": {
+            "$geometry": {
+                "type": "Point",
+                "coordinates": [-73.9712, 40.7831]
+            },
+            "$maxDistance": 30000
+        }
+    }}, 
+    {"restaurant_id": 1, "name": 1, "address.coord": 1, "borough": 1, "cuisine": 1}
+).limit(10)
+
+Output:
+[
+  {
+    _id: ObjectId('65d5060083c58ec23b897602'),
+    address: { coord: [ -73.9736712, 40.7830649 ] },
+    borough: 'Manhattan',
+    cuisine: 'Latin (Cuban, Dominican, Puerto Rican, South & Central American)',
+    name: 'Calle Ocho',
+    restaurant_id: '41601712'
+  },
+  {
+    _id: ObjectId('65d5060183c58ec23b899202'),
+    address: { coord: [ -73.97348199999999, 40.784114 ] },
+    borough: 'Manhattan',
+    cuisine: 'Sandwiches/Salads/Mixed Buffet',
+    name: "Lenny'S",
+    restaurant_id: '50005648'
+  },
+  {
+    _id: ObjectId('65d5060083c58ec23b896b8d'),
+    address: { coord: [ -73.97352599999999, 40.784055 ] },
+    borough: 'Manhattan',
+    cuisine: 'Chinese',
+    name: 'Canteen 82',
+    restaurant_id: '41478517'
+  },
+  {
+    _id: ObjectId('65d5060183c58ec23b898c67'),
+    address: { coord: [ -73.9736549, 40.7838652 ] },
+    borough: 'Manhattan',
+    cuisine: 'Juice, Smoothies, Fruit Salads',
+    name: 'Juice Press',
+    restaurant_id: '50001972'
+  },
+  {
+    _id: ObjectId('65d5060083c58ec23b897129'),
+    address: { coord: [ -73.97334699999999, 40.784298 ] },
+    borough: 'Manhattan',
+    cuisine: 'Italian',
+    name: 'Tarallucci E Vino',
+    restaurant_id: '41552593'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b894959'),
+    address: { coord: [ -73.9734941, 40.7842696 ] },
+    borough: 'Manhattan',
+    cuisine: 'French',
+    name: 'Bistro Citron',
+    restaurant_id: '40691939'
+  },
+  {
+    _id: ObjectId('65d5060183c58ec23b89951f'),
+    address: { coord: [ -73.97300899999999, 40.784756 ] },
+    borough: 'Manhattan',
+    cuisine: 'Indian',
+    name: 'Savoury Indian Cuisine',
+    restaurant_id: '50008448'
+  },
+  {
+    _id: ObjectId('65d5060083c58ec23b896e1b'),
+    address: { coord: [ -73.97324569999999, 40.78460949999999 ] },
+    borough: 'Manhattan',
+    cuisine: 'Italian',
+    name: 'Bellini Restaurant',
+    restaurant_id: '41512460'
+  },
+  {
+    _id: ObjectId('65d5060183c58ec23b897c04'),
+    address: { coord: [ -73.97324569999999, 40.78460949999999 ] },
+    borough: 'Manhattan',
+    cuisine: 'Japanese',
+    name: 'Matsu Japanese Cuisine',
+    restaurant_id: '41645581'
+  },
+  {
+    _id: ObjectId('65d5060283c58ec23b899c26'),
+    address: { coord: [ -73.97324569999999, 40.78460949999999 ] },
+    borough: 'Manhattan',
+    cuisine: 'Italian',
+    name: 'Bellini',
+    restaurant_id: '50014972'
+  }
+]
+
+10. What are the restaurants of a certain cuisine in each borough?
+
+What can be parameterized: cuisine, borough
+
+Query:
+db.restaurants.find({"cuisine": "Bakery", "borough": "Queens"}, 
+    {"restaurant_id": 1, "name": 1, "address.coord": 1, "borough": 1, "cuisine": 1}).limit(10)
+
+Output:
+[
+  {
+    _id: ObjectId('65d505ff83c58ec23b894191'),
+    address: { coord: [ -73.90539919999999, 40.7730596 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: 'Victory Sweet Shop',
+    restaurant_id: '40384920'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b8941a3'),
+    address: { coord: [ -73.91255009999999, 40.7743581 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: 'Lefkos Pygos Cafe',
+    restaurant_id: '40385657'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b894250'),
+    address: { coord: [ -73.8894548, 40.7470518 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: 'Miracali Bakery',
+    restaurant_id: '40390973'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b89425e'),
+    address: { coord: [ -73.813673, 40.691014 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: "Sybil'S Bakery",
+    restaurant_id: '40391259'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b89425f'),
+    address: { coord: [ -73.7308948, 40.760634 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: "Richer'S Bakery",
+    restaurant_id: '40391271'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b894315'),
+    address: { coord: [ -73.8413087, 40.6634483 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: 'Sugar Bun Bakery',
+    restaurant_id: '40395551'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b894353'),
+    address: { coord: [ -73.862658, 40.749222 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: 'La Antioquena Bakery Ii',
+    restaurant_id: '40396889'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b8943cf'),
+    address: { coord: [ -73.7889465, 40.7262928 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: 'Bagels & Cream Deli',
+    restaurant_id: '40399672'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b8943fb'),
+    address: { coord: [ -73.8404553, 40.7180368 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: 'Bonelle Pastry Shop',
+    restaurant_id: '40400429'
+  },
+  {
+    _id: ObjectId('65d505ff83c58ec23b89442c'),
+    address: { coord: [ -73.7896821, 40.7667149 ] },
+    borough: 'Queens',
+    cuisine: 'Bakery',
+    name: "D'Aquila Bakery",
+    restaurant_id: '40401155'
+  }
+]
